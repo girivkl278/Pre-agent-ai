@@ -1,0 +1,10 @@
+{
+  "name": "Placement Preparation Agent",
+  "description": "An AI-powered full-stack placement preparation platform featuring interactive coding challenges, company-specific tracks, and a realistic mock interview coach.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
