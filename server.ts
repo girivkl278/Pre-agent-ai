@@ -5,7 +5,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
-import { db, User, CodingProblem, CodeSubmission, InterviewSession, DiscussionPost } from './server-db.js';
+import { db } from './server-db.ts';
+import type { User, CodingProblem, CodeSubmission, InterviewSession, DiscussionPost } from './server-db.ts';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -13,11 +14,25 @@ const execPromise = promisify(exec);
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFilename = typeof __filename !== 'undefined'
+  ? __filename
+  : (import.meta && import.meta.url ? fileURLToPath(import.meta.url) : '');
+
+const currentDirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : (import.meta && import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
 
 const app = express();
 app.use(express.json());
+
+// Handle root POST requests (useful for GCP service validation / curl testing)
+app.post('/', (req, res) => {
+  res.json({
+    status: "active",
+    message: "Placement Preparation Agent API is online",
+    received: req.body
+  });
+});
 
 // Initialize Google Gemini Client securely on the server
 const apiKey = process.env.GEMINI_API_KEY;
@@ -321,7 +336,7 @@ try {
 }
 `;
 
-    const tempFile = path.resolve(__dirname, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.js`);
+    const tempFile = path.resolve(currentDirname, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.js`);
     try {
       fs.writeFileSync(tempFile, runnerScript, 'utf-8');
       const { stdout, stderr } = await execPromise(`node "${tempFile}"`, { timeout: 2000, maxBuffer: 1024 * 1024 });
@@ -354,7 +369,7 @@ try {
     }
   } else if (language === 'python') {
     // Check syntax using python compile
-    const pyTempFile = path.resolve(__dirname, `temp_${Date.now()}_syntax.py`);
+    const pyTempFile = path.resolve(currentDirname, `temp_${Date.now()}_syntax.py`);
     fs.writeFileSync(pyTempFile, code, 'utf-8');
     try {
       await execPromise(`python3 -m py_compile "${pyTempFile}"`, { timeout: 1500 });
@@ -423,7 +438,7 @@ else:
     sys.exit(1)
 `;
 
-    const tempFile = path.resolve(__dirname, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.py`);
+    const tempFile = path.resolve(currentDirname, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.py`);
     try {
       fs.writeFileSync(tempFile, runnerScript, 'utf-8');
       const { stdout, stderr } = await execPromise(`python3 "${tempFile}"`, { timeout: 2000, maxBuffer: 1024 * 1024 });
@@ -1525,32 +1540,44 @@ app.delete('/api/admin/problems/:id', authenticateToken, (req, res) => {
 // ==========================================
 // PRODUCTION & DEVELOPMENT STATIC ASSET ROUTING
 // ==========================================
-const isProd = process.env.NODE_ENV === 'production';
+// Robust detection for whether we are running in bundled production mode
+const isBundled = currentFilename.endsWith('.cjs') || currentDirname.endsWith('dist');
+const isProd = process.env.NODE_ENV === 'production' || isBundled;
 
-if (!isProd) {
-  // Mounting Vite Development Middleware dynamically
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  });
-  
-  app.use(vite.middlewares);
-} else {
-  // Production builds serve statically compiled assets
-  const distPath = path.resolve(__dirname, 'dist');
-  app.use(express.static(distPath));
-  
-  app.get('*', (req, res, next) => {
-    // Exclude API routes from index.html redirection
-    if (req.originalUrl.startsWith('/api')) {
-      return next();
-    }
-    res.sendFile(path.resolve(distPath, 'index.html'));
+async function startServer() {
+  if (!isProd) {
+    // Mounting Vite Development Middleware dynamically
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    
+    app.use(vite.middlewares);
+  } else {
+    // In bundled server.cjs, currentDirname is already inside '/app/dist'
+    // Otherwise in standard dev, it is at root, so we check 'dist'
+    const distPath = isBundled 
+      ? path.resolve(currentDirname)
+      : path.resolve(currentDirname, 'dist');
+      
+    app.use(express.static(distPath));
+    
+    app.get('*', (req, res, next) => {
+      // Exclude API routes from index.html redirection
+      if (req.originalUrl.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(path.resolve(distPath, 'index.html'));
+    });
+  }
+
+  // Start the integrated full-stack server
+  const PORT = 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Placement Preparation Agent listening on http://0.0.0.0:${PORT}`);
   });
 }
 
-// Start the integrated full-stack server
-const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Placement Preparation Agent listening on http://0.0.0.0:${PORT}`);
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
 });

@@ -1,4 +1,4 @@
-import { CodingProblem } from './server-db.js';
+import type { CodingProblem } from './server-db.ts';
 
 interface RawCompactProblem {
   id: string;

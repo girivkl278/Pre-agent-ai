@@ -1,11 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getComprehensiveProblems } from './server-problems.js';
+import { getComprehensiveProblems } from './server-problems.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_FILE = path.resolve(__dirname, 'database.json');
+const currentFilename = typeof __filename !== 'undefined'
+  ? __filename
+  : (import.meta && import.meta.url ? fileURLToPath(import.meta.url) : '');
+
+const currentDirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : (import.meta && import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
+
+const DB_FILE = path.resolve(currentDirname, 'database.json');
 
 export interface User {
   id: string;
